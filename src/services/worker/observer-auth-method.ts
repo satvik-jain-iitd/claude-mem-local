@@ -47,9 +47,8 @@ export function describeObserverAuthMethod(provider: string, settings?: Settings
         : 'OpenRouter API key';
     case 'openai-compatible': {
       const preset = resolveOpenAICompatPreset(resolved.CLAUDE_MEM_OPENAI_COMPAT_PRESET);
-      return preset.id === 'custom'
-        ? 'OpenAI-compatible API key'
-        : `${preset.label} API key`;
+      if (preset.id === 'custom') return 'OpenAI-compatible API key';
+      return preset.requiresApiKey ? `${preset.label} API key` : `${preset.label}, no key needed`;
     }
     default:
       return getAuthMethodDescription();

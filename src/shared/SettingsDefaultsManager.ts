@@ -553,7 +553,7 @@ export class SettingsDefaultsManager {
     // provider prompt defaults to 'cmem' (the hosted observer), but headless
     // installs land here — no delivered key exists headlessly, so the settings
     // default stays 'claude'.
-    CLAUDE_MEM_PROVIDER: 'claude',
+    CLAUDE_MEM_PROVIDER: 'openai-compatible',  // M2 (#2): local by default. Never Claude unless the owner sets it.
     CLAUDE_MEM_PROVIDER_BY_SOURCE: '',
     CLAUDE_MEM_OBSERVER_ENABLED: 'true',  // 'false' disables new observation and session-summary capture calls
     // Image capture is on: the viewer's "Keep images" switch turns it off.
@@ -594,7 +594,7 @@ export class SettingsDefaultsManager {
     // Settings file or env only (never the HTTP settings API); never sent to the cmem gateway.
     CLAUDE_MEM_OPENROUTER_EXTRA_BODY: '',
     CLAUDE_MEM_OPENROUTER_REASONING_EFFORT: '',  // none | minimal | low | medium | high. Empty disables reasoning on openrouter.ai and the cmem gateway. A set effort is openrouter.ai only.
-    CLAUDE_MEM_OPENAI_COMPAT_PRESET: '',  // Named endpoint preset for the openai-compatible provider (nvidia-nim, deepseek, groq, together, vllm, ollama, lmstudio). Empty = 'custom', configure the base URL by hand.
+    CLAUDE_MEM_OPENAI_COMPAT_PRESET: 'ollama',  // M2 (#2): local Ollama by default. Model must be set by the owner, empty = fail loud.  // Named endpoint preset for the openai-compatible provider (nvidia-nim, deepseek, groq, together, vllm, ollama, lmstudio). Empty = 'custom', configure the base URL by hand.
     CLAUDE_MEM_OPENAI_COMPAT_API_KEY: '',  // Key for the openai-compatible provider. Never shares the OpenRouter key or its attribution headers.
     CLAUDE_MEM_OPENAI_COMPAT_API_KEYS: '',  // Optional extra keys (newline/comma separated) for the openai-compatible provider.
     CLAUDE_MEM_OPENAI_COMPAT_BASE_URL: '',  // OpenAI-compatible base URL, e.g. https://integrate.api.nvidia.com/v1. Overrides the preset's base URL when set.
