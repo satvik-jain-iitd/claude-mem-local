@@ -17,3 +17,8 @@ project `thedotmack/claude-mem` (v15.15.0, source copied here). So the work is f
 (adopt and borrow), not a new build from scratch.
 
 Reference: `thedotmack/claude-mem` (Apache-2.0). Source copied at M0 (commit to follow).
+
+## Run: M5 observer eval harness (issue #15)
+- Need: score a local model's observation against Claude's observation (field coverage, exact numbers, valid XML), no model call.
+- Query: `gh search repos "claude code memory" --limit 5` (and `"claude-mem eval"`, `"llm observation summary eval harness"`, both returned no results).
+- Verdict: no repo found that scores observer outputs. Built a small deterministic scorer from scratch in `evals/observer/score.ts`, stdlib only.
