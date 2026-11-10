@@ -27,7 +27,6 @@ import {
   globalRateLimitStore,
   buildUsageLimitHitProps,
   extractRateLimitInfo,
-  shouldAbortForQuota,
 } from './RateLimitStore.js';
 
 // @ts-ignore - Agent SDK types may not be available
@@ -561,11 +560,6 @@ export class ClaudeProvider {
         });
       };
 
-      // Whether the provider answered the current turn's request: set by its
-      // first assistant frame, cleared when the turn's result arrives. The
-      // quota guard reads it to tell a refusal from a served request that
-      // carries a rejected overage bucket (#5182).
-      let turnServed = false;
       for await (const message of queryResult) {
         // A stall already handed the claimed batch back to pending; a frame
         // processed now would be stored twice once the batch is re-sent (#4066).
@@ -577,12 +571,8 @@ export class ClaudeProvider {
             ? message.retry_delay_ms
             : 0,
         );
-        // Quota-aware wall-clock guard (#2234): the SDK pushes
-        // `rate_limit_event` messages carrying live subscription quota state
-        // (see extractRateLimitInfo for the shape). Capture the snapshot, then
-        // bail out of the loop before issuing another request if we've
-        // crossed a per-window threshold. API-key users are exempt — they
-        // authorized per-call spend.
+        // The SDK pushes `rate_limit_event` messages with live subscription
+        // quota state. Record the snapshot only; the quota guard is off (M2b, #2).
         const info = extractRateLimitInfo(message);
         if (info) {
           // The observer runs on the same account as the observed session,
@@ -603,29 +593,8 @@ export class ClaudeProvider {
               observed_billing: session.observedBilling,
             });
           }
-          // A rejection on an overage bucket that arrives with a served
-          // response is not a refusal of this request (#5182).
-          const decision = shouldAbortForQuota(authMethod, globalRateLimitStore, Date.now(), observerProfile, {
-            requestServed: turnServed,
-          });
-          if (decision.abort) {
-            logger.warn('SDK', `Aborting session for quota guard: ${decision.reason}`, {
-              sessionDbId: session.sessionDbId,
-              window: decision.window,
-              authMethod,
-            });
-            // 'quota:<window>:<kind>': the category stays quota and the window
-            // stays the second field, and the kind travels with the abort so
-            // the runner books what the guard actually decided, whatever the
-            // shared snapshot says by the time the generator exits.
-            session.abortReason = `quota:${decision.window ?? 'unknown'}:${decision.pause?.kind ?? 'quota_exhausted'}`;
-            try {
-              session.abortController.abort();
-            } catch {
-              // best-effort
-            }
-            break;
-          }
+          // M2b (#2): the quota guard is off. The snapshot is recorded above
+          // for telemetry; the observer never stops for it.
         }
 
         if (message.session_id && message.session_id !== session.memorySessionId) {
@@ -657,7 +626,6 @@ export class ClaudeProvider {
         }
 
         if (message.type === 'assistant') {
-          turnServed = true;
           const content = message.message.content;
           // A turn can arrive as several assistant messages, and a frame that
           // holds only thinking or tool_use blocks carries no text at all.
@@ -786,7 +754,6 @@ export class ClaudeProvider {
         }
 
         if (message.type === 'result') {
-          turnServed = false;
           // The result message carries the turn's finalized usage (per-turn,
           // not cumulative — verified empirically against the SDK) plus a
           // CUMULATIVE total_cost_usd; per-compression cost is the delta

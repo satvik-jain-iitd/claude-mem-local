@@ -22,3 +22,8 @@ Reference: `thedotmack/claude-mem` (Apache-2.0). Source copied at M0 (commit to 
 - Need: score a local model's observation against Claude's observation (field coverage, exact numbers, valid XML), no model call.
 - Query: `gh search repos "claude code memory" --limit 5` (and `"claude-mem eval"`, `"llm observation summary eval harness"`, both returned no results).
 - Verdict: no repo found that scores observer outputs. Built a small deterministic scorer from scratch in `evals/observer/score.ts`, stdlib only.
+## M2b run (issue #2): quota guard off
+
+- Need: stop the observer from pausing or aborting on Claude quota (5-hour 95%, weekly 93%).
+- Query: `gh search repos "claude code usage quota guard" --limit 5` (returned no rows).
+- Verdict: none found. Fixed in place: the guard in `RateLimitStore.ts` and the abort in `ClaudeProvider.ts` are removed.

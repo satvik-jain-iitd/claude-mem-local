@@ -37,9 +37,6 @@
  * users are exempt because they authorized per-call spend.
  */
 
-import { SettingsDefaultsManager, type SettingsDefaults } from '../../shared/SettingsDefaultsManager.js';
-import { USER_SETTINGS_PATH } from '../../shared/paths.js';
-import { logger } from '../../utils/logger.js';
 import type { ObserverQuotaReason } from '../../shared/observer-health.js';
 
 export type RateLimitWindow =
@@ -375,57 +372,6 @@ export function buildUsageLimitHitProps(
 }
 
 /**
- * Settings that hold the per-window utilization thresholds for subscription
- * users (cli/oauth). Crossing one of these aborts the SDK loop so we don't
- * burn through the window on background memory work and starve interactive
- * sessions. `seven_day_overage_included` has none: its figure does not say
- * the observer draws on it (see RateLimitWindow), so only a refusal counts.
- */
-const UTILIZATION_THRESHOLD_SETTINGS: Partial<Record<RateLimitWindow, keyof SettingsDefaults>> = {
-  five_hour: 'CLAUDE_MEM_QUOTA_THRESHOLD_FIVE_HOUR',
-  seven_day_opus: 'CLAUDE_MEM_QUOTA_THRESHOLD_SEVEN_DAY_OPUS',
-  seven_day_sonnet: 'CLAUDE_MEM_QUOTA_THRESHOLD_SEVEN_DAY_SONNET',
-  seven_day: 'CLAUDE_MEM_QUOTA_THRESHOLD_SEVEN_DAY',
-  overage: 'CLAUDE_MEM_QUOTA_THRESHOLD_OVERAGE',
-};
-
-/** Threshold settings already warned about: once per key per process, not per rate_limit_event. */
-const warnedInvalidThresholdKeys = new Set<keyof SettingsDefaults>();
-
-/**
- * The window's threshold: a fraction from 0 to 1 (0.93 = 93%), where 0 stops
- * at any utilization and 1 only at full. A blank value gives the shipped
- * default. So does any other value, such as `93` meant as a percent, which
- * would otherwise turn the window's guard off silently; that is logged once
- * per key.
- */
-function utilizationThreshold(window: RateLimitWindow, settings: SettingsDefaults): number | undefined {
-  const key = UTILIZATION_THRESHOLD_SETTINGS[window];
-  if (!key) return undefined;
-  const fallback = Number(SettingsDefaultsManager.getAllDefaults()[key]);
-  // settings.json is hand-editable, so the value can arrive as a JSON number.
-  const configured: unknown = settings[key];
-  const raw = configured == null ? '' : String(configured).trim();
-  if (raw === '') return fallback;
-  const threshold = Number(raw);
-  // NaN fails both comparisons, so `0.9x` or `abc` falls through as well.
-  if (threshold >= 0 && threshold <= 1) return threshold;
-  if (!warnedInvalidThresholdKeys.has(key)) {
-    warnedInvalidThresholdKeys.add(key);
-    logger.warn('CONFIG', `${key} must be a fraction from 0 to 1 (0.93 = 93%); using the default instead`, {
-      value: raw,
-      default: fallback,
-    });
-  }
-  return fallback;
-}
-
-/** Reset-window grace: bail early if a window resets within this many ms. */
-const RESET_GRACE_MS = 15 * 60 * 1000; // 15 minutes
-/** Utilization floor before the reset-grace check kicks in. */
-const RESET_GRACE_UTILIZATION_FLOOR = 0.85;
-
-/**
  * Why the guard stopped the observer, for the health ledger and the cooldown
  * notice. `quota_exhausted` is the provider's own refusal; `quota_guard` is
  * claude-mem's precautionary stop (a utilization threshold, the reset
@@ -449,40 +395,9 @@ export interface QuotaGuardOptions {
   requestServed?: boolean;
 }
 
-/**
- * Windows whose `rejected` the provider also reports on requests it serves
- * (#5182): the overage-included bucket once spent, and extra usage when it is
- * disabled or spent. A rejection on them is a refusal only when the request
- * went unanswered. The main windows (five_hour, the weekly windows) are not
- * here: a rejection there is the provider refusing the account.
- */
-const SERVED_REQUEST_ADVISORY_WINDOWS: ReadonlySet<RateLimitWindow> = new Set<RateLimitWindow>([
-  'seven_day_overage_included',
-  'overage',
-]);
-
 export type QuotaDecision =
   | { abort: false; reason?: undefined; window?: undefined; pause?: undefined }
   | { abort: true; reason: string; window: RateLimitWindow; pause: QuotaPause };
-
-const WINDOW_LABELS: Record<RateLimitWindow, string> = {
-  five_hour: 'five-hour',
-  seven_day: 'weekly',
-  seven_day_opus: 'weekly Opus',
-  seven_day_sonnet: 'weekly Sonnet',
-  seven_day_overage_included: 'weekly overage-included',
-  overage: 'extra-usage',
-};
-
-/** The windows the guard reads, in the order a tie between local guards is broken. */
-const GUARDED_WINDOWS: readonly RateLimitWindow[] = [
-  'five_hour',
-  'seven_day_opus',
-  'seven_day_sonnet',
-  'seven_day',
-  'seven_day_overage_included',
-  'overage',
-];
 
 /**
  * Decide whether to abort SDK consumption based on the latest rate-limit
@@ -503,167 +418,30 @@ const GUARDED_WINDOWS: readonly RateLimitWindow[] = [
  * window would also have paused on its threshold.
  */
 export function shouldAbortForQuota(
-  authMethod: string,
-  store: RateLimitStore,
-  now: number = Date.now(),
-  profile?: string,
-  options: QuotaGuardOptions = {},
+  _authMethod: string,
+  _store: RateLimitStore,
+  _now: number = Date.now(),
+  _profile?: string,
+  _options: QuotaGuardOptions = {},
 ): QuotaDecision {
-  // API-key users authorized per-call spend; the wall-clock guard is for
-  // subscription quota only.
-  if (isApiKeyAuth(authMethod)) {
-    return { abort: false };
-  }
-
-  const settings = SettingsDefaultsManager.loadFromFile(USER_SETTINGS_PATH);
-  // Ignore expired snapshots without removing them from the store so a
-  // repeated stale rejection does not look new to set() telemetry.
-  const liveEntry = (window: RateLimitWindow): RateLimitEntry | undefined => {
-    const entry = store.get(window);
-    if (!entry || isOtherProfile(entry, profile)) return undefined;
-    const resetsAtMs = normalizeResetTimeMs(entry.resetsAt);
-    return resetsAtMs !== undefined && resetsAtMs <= now ? undefined : entry;
-  };
-
-  for (const window of GUARDED_WINDOWS) {
-    const entry = liveEntry(window);
-    const rejection = entry && providerRejection(window, entry, options);
-    if (rejection) return rejection;
-  }
-  for (const window of GUARDED_WINDOWS) {
-    const entry = liveEntry(window);
-    const guard = entry && localGuard(window, entry, utilizationThreshold(window, settings), now);
-    if (guard) return guard;
-  }
-
+  // M2b (#2): the observer never stops because of the Claude quota. Utilization
+  // thresholds, the reset buffer and provider rejections all report "not held".
+  // The snapshot is still recorded in the store for telemetry and the ledger.
   return { abort: false };
 }
 
-/**
- * The provider has already declared the bucket exhausted: status='rejected',
- * or overageStatus='rejected' on the overage window. Stop regardless of
- * whether utilization is reported, unless the window is one whose rejection
- * the provider also reports on served requests and this request was served
- * (#5182).
- */
-function providerRejection(
-  window: RateLimitWindow,
-  entry: RateLimitEntry,
-  options: QuotaGuardOptions = {},
-): QuotaDecision | undefined {
-  const isRejected =
-    entry.status === 'rejected' ||
-    (window === 'overage' && entry.overageStatus === 'rejected');
-  if (!isRejected) return undefined;
-  if (options.requestServed === true && SERVED_REQUEST_ADVISORY_WINDOWS.has(window)) return undefined;
-  const resetsAt = normalizeResetTimeMs(entry.resetsAt);
-  return {
-    abort: true,
-    window,
-    reason: `quota:${window} rejected by provider`,
-    pause: {
-      kind: 'quota_exhausted',
-      message: `Claude rejected the request because its ${WINDOW_LABELS[window]} usage allowance is exhausted.`,
-      reason: {
-        kind: 'used_up',
-        window,
-        ...(resetsAt !== undefined ? { resetsAt } : {}),
-      },
-    },
-  };
-}
 
 /**
- * claude-mem's own stop while the provider still accepts requests: the
- * window's utilization threshold, or the five-hour reset buffer.
- */
-function localGuard(
-  window: RateLimitWindow,
-  entry: RateLimitEntry,
-  threshold: number | undefined,
-  now: number,
-): QuotaDecision | undefined {
-  const util = entry.utilization;
-  const resetsAtMs = normalizeResetTimeMs(entry.resetsAt);
-  // An explicit false means the provider is not charging the overage bucket,
-  // so its utilization does not represent active quota consumption.
-  const appliesUtilizationThreshold =
-    window !== 'overage' || entry.isUsingOverage !== false;
-
-  if (appliesUtilizationThreshold && threshold !== undefined && typeof util === 'number' && util >= threshold) {
-    return {
-      abort: true,
-      window,
-      reason: `quota:${window} utilization ${(util * 100).toFixed(1)}% >= ${(threshold * 100).toFixed(0)}%`,
-      pause: {
-        kind: 'quota_guard',
-        message: `Memory capture paused: ${WINDOW_LABELS[window]} Claude usage is ${(util * 100).toFixed(1)}%, at or above the ${(threshold * 100).toFixed(0)}% pause threshold. This reserves allowance for interactive work.`,
-        reason: {
-          kind: 'limit_guard',
-          window,
-          usagePercent: Number((util * 100).toFixed(1)),
-          thresholdPercent: Number((threshold * 100).toFixed(1)),
-          ...(resetsAtMs !== undefined ? { resetsAt: resetsAtMs } : {}),
-        },
-      },
-    };
-  }
-
-  // Reset-grace buffer: only meaningful for the rolling 5h window where
-  // a fresh bucket is imminent. Skip when utilization is low — no point
-  // bailing on a window that just reset to ~0%.
-  if (
-    window === 'five_hour' &&
-    resetsAtMs !== undefined &&
-    typeof util === 'number' &&
-    util >= RESET_GRACE_UTILIZATION_FLOOR
-  ) {
-    const msUntilReset = resetsAtMs - now;
-    if (msUntilReset > 0 && msUntilReset <= RESET_GRACE_MS) {
-      const minutes = Math.round(msUntilReset / 60000);
-      return {
-        abort: true,
-        window,
-        reason: `quota:${window} resets in ${minutes}m (grace buffer ${RESET_GRACE_MS / 60000}m, util ${(util * 100).toFixed(1)}%)`,
-        pause: {
-          kind: 'quota_guard',
-          message: `Memory capture paused: five-hour Claude usage is ${(util * 100).toFixed(1)}% and resets in ${minutes} minutes, within the ${RESET_GRACE_MS / 60000}-minute reserve buffer.`,
-          reason: {
-            kind: 'reset_buffer_guard',
-            window,
-            usagePercent: Number((util * 100).toFixed(1)),
-            resetsAt: resetsAtMs,
-          },
-        },
-      };
-    }
-  }
-  return undefined;
-}
-
-/**
- * Rebuild the pause behind a `quota:<window>` abort from the snapshot that
- * produced it. The provider writes only the window on session.abortReason;
- * the generator's exit path needs the kind and the wording for the health
- * ledger and the cooldown notice. Undefined when the reason names no guarded
- * window or the snapshot no longer explains a stop; the caller books its
- * generic quota record then.
+ * Rebuild the pause behind a `quota:<window>` abort. M2b (#2): the guard never
+ * aborts, so no abort reason exists to explain. Always undefined.
  */
 export function explainQuotaAbort(
-  reason: string | null | undefined,
-  store: RateLimitStore,
-  now: number = Date.now(),
-  profile?: string,
+  _reason: string | null | undefined,
+  _store: RateLimitStore,
+  _now: number = Date.now(),
+  _profile?: string,
 ): QuotaPause | undefined {
-  const detail = (reason ?? '').split(':')[1];
-  const window = GUARDED_WINDOWS.find(candidate => candidate === detail);
-  if (!window) return undefined;
-  const entry = store.get(window);
-  if (!entry || isOtherProfile(entry, profile)) return undefined;
-  const settings = SettingsDefaultsManager.loadFromFile(USER_SETTINGS_PATH);
-  const decision =
-    providerRejection(window, entry) ?? localGuard(window, entry, utilizationThreshold(window, settings), now);
-  return decision?.pause;
+  return undefined;
 }
 
 function isOtherProfile(entry: RateLimitEntry, profile: string | undefined): boolean {
