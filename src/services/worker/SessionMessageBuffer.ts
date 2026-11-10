@@ -1,7 +1,7 @@
 import { EventEmitter } from 'events';
 import type { PendingMessage, PendingMessageWithId } from '../worker-types.js';
 import { logger } from '../../utils/logger.js';
-import { LIVE_OBSERVER_MAX_AGE_MS, LIVE_OBSERVER_MAX_SESSION_MESSAGES, LIVE_OBSERVER_MAX_TOTAL_MESSAGES } from '../../shared/observer-work-policy.js';
+import { LIVE_OBSERVER_MAX_AGE_MS, LIVE_OBSERVER_MAX_SESSION_MESSAGES, LIVE_OBSERVER_MAX_TOTAL_MESSAGES, isLocalObserverProvider } from '../../shared/observer-work-policy.js';
 
 export const IDLE_TIMEOUT_MS = 3 * 60 * 1000;
 
@@ -90,8 +90,8 @@ export class SessionMessageBuffer {
 
     // Never build a catch-up obligation. Keep in-flight paid work intact;
     // reject new work when this short-lived buffer is full.
-    if ((this.buffers.get(sessionDbId)?.length ?? 0) >= LIVE_OBSERVER_MAX_SESSION_MESSAGES
-      || this.totalBuffered() >= LIVE_OBSERVER_MAX_TOTAL_MESSAGES) {
+    if (!isLocalObserverProvider() && ((this.buffers.get(sessionDbId)?.length ?? 0) >= LIVE_OBSERVER_MAX_SESSION_MESSAGES
+      || this.totalBuffered() >= LIVE_OBSERVER_MAX_TOTAL_MESSAGES)) {
       logger.debug('QUEUE', 'Live observer buffer full; skipping event', { sessionId: sessionDbId });
       return 0;
     }
@@ -370,6 +370,7 @@ export class SessionMessageBuffer {
 
   /** Expire only unsent work. A paid request already in flight may finish. */
   private pruneExpired(): void {
+    if (isLocalObserverProvider()) return;
     const cutoff = Date.now() - LIVE_OBSERVER_MAX_AGE_MS;
     let skipped = 0;
     for (const [sessionDbId, list] of this.buffers) {

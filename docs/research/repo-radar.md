@@ -22,3 +22,12 @@ Reference: `thedotmack/claude-mem` (Apache-2.0). Source copied at M0 (commit to 
 - Need: score a local model's observation against Claude's observation (field coverage, exact numbers, valid XML), no model call.
 - Query: `gh search repos "claude code memory" --limit 5` (and `"claude-mem eval"`, `"llm observation summary eval harness"`, both returned no results).
 - Verdict: no repo found that scores observer outputs. Built a small deterministic scorer from scratch in `evals/observer/score.ts`, stdlib only.
+## Run: M3 never-drop for local providers (2026-11-10, cml-dev)
+
+Need (one line): skip the 5 min age drop, the per-session and total caps, and the paid-send budget when the observer provider is local (openai-compatible or ollama).
+
+| Step | Command or query | Result |
+|---|---|---|
+| GitHub search | `gh search repos "claude-mem ollama" --limit 5` | Two hits: limeflash/claude-mem-ollama-proxy (a proxy for Ollama Cloud, archived) and limeflash/claude-code-stack (a bundle). Neither changes the drop or budget policy. |
+
+Verdict: no repo carries this policy change. Build it in this fork as a small patch to observer-work-policy.ts, SessionMessageBuffer.ts, paid-send-budget.ts and connection.ts (borrow nothing).

@@ -1,8 +1,16 @@
 import { Database } from 'bun:sqlite';
 import { logger } from '../../utils/logger.js';
 
+import { isLocalObserverProvider } from '../../shared/observer-work-policy.js';
+
 export const SQLITE_BUSY_TIMEOUT_MS = 5000;
+/** Local provider: a slow local model can hold the write lock longer than 5 s. */
+export const SQLITE_BUSY_TIMEOUT_LOCAL_MS = 30000;
 export const SQLITE_JOURNAL_SIZE_LIMIT_BYTES = 4194304;
+
+export function busyTimeoutMsForProvider(): number {
+  return isLocalObserverProvider() ? SQLITE_BUSY_TIMEOUT_LOCAL_MS : SQLITE_BUSY_TIMEOUT_MS;
+}
 
 /**
  * The highest SessionStore migration version this binary's chain knows — the
@@ -52,7 +60,7 @@ export function assertSchemaWriterCompatible(db: Database, latestKnownSchemaVers
   // while another connection is opening the same WAL database, and a worker
   // whose boot fails twice that way is not recycled again. busy_timeout is a
   // per-connection setting, so a refused open still leaves the file untouched.
-  db.run(`PRAGMA busy_timeout = ${SQLITE_BUSY_TIMEOUT_MS}`);
+  db.run(`PRAGMA busy_timeout = ${busyTimeoutMsForProvider()}`);
   const stamp = readSchemaWriterStamp(db);
   if (stamp <= latestKnownSchemaVersion) {
     return;

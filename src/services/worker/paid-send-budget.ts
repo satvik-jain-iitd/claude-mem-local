@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto';
 import type { ActiveSession } from '../worker-types.js';
+import { isLocalObserverProvider } from '../../shared/observer-work-policy.js';
 
 /**
  * Paid sends one claimed batch may make in total, across every path that can
@@ -49,6 +50,8 @@ export class PaidSendBudget {
  * a batch and carries no budget.
  */
 export function paidSendBudgetForClaimedBatch(session: ActiveSession): PaidSendBudget | undefined {
+  // A local provider has no paid sends to ration, so no batch is ever parked.
+  if (isLocalObserverProvider()) return undefined;
   const batchHeadMessageId = session.claimedMessageIds[0];
   if (batchHeadMessageId === undefined) return undefined;
   if (session.paidSendBudget?.batchHeadMessageId !== batchHeadMessageId) {
