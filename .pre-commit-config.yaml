@@ -1,0 +1,24 @@
+default_install_hook_types: [pre-commit, commit-msg, pre-push, prepare-commit-msg]
+repos:
+  - repo: local
+    hooks:
+      - id: check-local
+        name: ShipQuick hygiene checks on this Mac
+        entry: bash knowledge/shipquick_latest/scripts/check_local.sh sizes markers md-blocks secrets-staged
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit]
+      - id: check-local-push
+        name: All ShipQuick hygiene checks before a push
+        entry: bash knowledge/shipquick_latest/scripts/check_local.sh
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
+      - id: session-trailer
+        name: Add Built-by <session> to the commit message (ADR-011)
+        entry: bash knowledge/shipquick_latest/scripts/session_trailer.sh
+        language: system
+        always_run: true
+        stages: [prepare-commit-msg]
