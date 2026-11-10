@@ -17,3 +17,9 @@ project `thedotmack/claude-mem` (v15.15.0, source copied here). So the work is f
 (adopt and borrow), not a new build from scratch.
 
 Reference: `thedotmack/claude-mem` (Apache-2.0). Source copied at M0 (commit to follow).
+
+## Run note: M4 part 1, Chroma off by default (2026-11-10)
+
+- Need: make Chroma opt-in so search runs from FTS5 only, with no Chroma dependency.
+- Query: `gh search repos "sqlite fts5 local memory search without vector database" --limit 5` returned no repos. Second query `gh search repos "chroma off fts5 search default" --limit 5` returned 0.
+- Verdict: reuse the in-repo code. The orchestrator already falls back to SQLite when no Chroma strategy exists. Only the default setting needs to change (src/shared/SettingsDefaultsManager.ts). No new code from outside.
