@@ -1,0 +1,122 @@
+
+import type { ObservationSearchResult, SessionSummarySearchResult, UserPromptSearchResult } from '../sqlite/types.js';
+import { ModeManager } from '../domain/ModeManager.js';
+import { logger } from '../../utils/logger.js';
+import { formatTime } from '../../shared/timeline-formatting.js';
+
+const CHARS_PER_TOKEN_ESTIMATE = 4;
+
+export const singleLineTitle = (value: string): string => value.replace(/[\r\n\u2028\u2029]+/g, ' ');
+
+export class FormattingService {
+  formatSearchTips(): string {
+    return `\n---
+💡 Search Strategy:
+1. Search with index to see titles, dates, IDs
+2. Use timeline to get context around interesting results
+3. Batch fetch full details: get_observations(ids=[...])
+
+Tips:
+• Filter by type: obs_type="bugfix,feature"
+• Filter by date: dateStart="2025-01-01"
+• Sort: orderBy="date_desc" or "date_asc"`;
+  }
+
+  private estimateReadTokens(obs: ObservationSearchResult): number {
+    const size = (obs.title?.length || 0) +
+                 (obs.subtitle?.length || 0) +
+                 (obs.narrative?.length || 0) +
+                 (obs.facts?.length || 0);
+    return Math.ceil(size / CHARS_PER_TOKEN_ESTIMATE);
+  }
+
+  formatObservationIndex(obs: ObservationSearchResult, _index: number): string {
+    const id = `#${obs.id}`;
+    const time = formatTime(obs.created_at_epoch);
+    const icon = ModeManager.getInstance().getTypeIcon(obs.type);
+    const title = singleLineTitle(obs.title || 'Untitled');
+    const readTokens = this.estimateReadTokens(obs);
+    const workEmoji = ModeManager.getInstance().getWorkEmoji(obs.type);
+    const workTokens = obs.discovery_tokens || 0;
+    const workDisplay = workTokens > 0 ? `${workEmoji} ${workTokens}` : '-';
+
+    return `| ${id} | ${time} | ${icon} | ${title} | ~${readTokens} | ${workDisplay} |`;
+  }
+
+  formatSessionIndex(session: SessionSummarySearchResult, _index: number): string {
+    const id = `#S${session.id}`;
+    const time = formatTime(session.created_at_epoch);
+    const icon = '🎯';
+    const title = singleLineTitle(session.request || `Session ${session.memory_session_id?.substring(0, 8) || 'unknown'}`);
+
+    return `| ${id} | ${time} | ${icon} | ${title} | - | - |`;
+  }
+
+  formatUserPromptIndex(prompt: UserPromptSearchResult, _index: number): string {
+    const id = `#P${prompt.id}`;
+    const time = formatTime(prompt.created_at_epoch);
+    const icon = '💬';
+    const text = singleLineTitle(prompt.prompt_text);
+    const title = text.length > 60
+      ? text.substring(0, 57) + '...'
+      : text;
+
+    return `| ${id} | ${time} | ${icon} | ${title} | - | - |`;
+  }
+
+  formatTableHeader(): string {
+    return `| ID | Time | T | Title | Read | Work |
+|-----|------|---|-------|------|------|`;
+  }
+
+  formatSearchTableHeader(): string {
+    return `| ID | Time | T | Title | Read |
+|----|------|---|-------|------|`;
+  }
+
+  formatObservationSearchRow(obs: ObservationSearchResult, lastTime: string): { row: string; time: string } {
+    const id = `#${obs.id}`;
+    const time = formatTime(obs.created_at_epoch);
+    const icon = ModeManager.getInstance().getTypeIcon(obs.type);
+    const title = singleLineTitle(obs.title || 'Untitled');
+    const readTokens = this.estimateReadTokens(obs);
+
+    const timeDisplay = time === lastTime ? '″' : time;
+
+    return {
+      row: `| ${id} | ${timeDisplay} | ${icon} | ${title} | ~${readTokens} |`,
+      time
+    };
+  }
+
+  formatSessionSearchRow(session: SessionSummarySearchResult, lastTime: string): { row: string; time: string } {
+    const id = `#S${session.id}`;
+    const time = formatTime(session.created_at_epoch);
+    const icon = '🎯';
+    const title = singleLineTitle(session.request || `Session ${session.memory_session_id?.substring(0, 8) || 'unknown'}`);
+
+    const timeDisplay = time === lastTime ? '″' : time;
+
+    return {
+      row: `| ${id} | ${timeDisplay} | ${icon} | ${title} | - |`,
+      time
+    };
+  }
+
+  formatUserPromptSearchRow(prompt: UserPromptSearchResult, lastTime: string): { row: string; time: string } {
+    const id = `#P${prompt.id}`;
+    const time = formatTime(prompt.created_at_epoch);
+    const icon = '💬';
+    const text = singleLineTitle(prompt.prompt_text);
+    const title = text.length > 60
+      ? text.substring(0, 57) + '...'
+      : text;
+
+    const timeDisplay = time === lastTime ? '″' : time;
+
+    return {
+      row: `| ${id} | ${timeDisplay} | ${icon} | ${title} | - |`,
+      time
+    };
+  }
+}

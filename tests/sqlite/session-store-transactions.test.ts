@@ -1,0 +1,362 @@
+import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+import { SessionStore } from '../../src/services/sqlite/SessionStore.js';
+
+function obs(overrides: Partial<Parameters<SessionStore['storeObservations']>[2][number]> = {}) {
+  return {
+    type: 'discovery',
+    title: 'Test Observation',
+    subtitle: 'Test Subtitle',
+    facts: ['fact1'],
+    narrative: 'Test narrative content',
+    concepts: ['concept1'],
+    files_read: [],
+    files_modified: [],
+    ...overrides,
+  };
+}
+
+function summary(overrides: Partial<NonNullable<Parameters<SessionStore['storeObservations']>[3]>> = {}) {
+  return {
+    request: 'req',
+    investigated: 'inv',
+    learned: 'learn',
+    completed: 'done',
+    next_steps: 'next',
+    notes: 'notes' as string | null,
+    ...overrides,
+  };
+}
+
+describe('SessionStore.storeObservations', () => {
+  let store: SessionStore;
+
+  beforeEach(() => {
+    store = new SessionStore(':memory:');
+  });
+
+  afterEach(() => {
+    store.close();
+  });
+
+  // observations/session_summaries reference sdk_sessions(memory_session_id) via enforced FK.
+  function session(memorySessionId: string): string {
+    const id = store.createSDKSession(`content-${memorySessionId}`, 'project', 'prompt');
+    store.updateMemorySessionId(id, memorySessionId);
+    return memorySessionId;
+  }
+
+  it('stores N observations atomically with null summaryId when no summary', () => {
+    const inputs = [
+      obs({ title: 'A', narrative: 'a' }),
+      obs({ title: 'B', narrative: 'b' }),
+      obs({ title: 'C', narrative: 'c' }),
+    ];
+
+    const result = store.storeObservations(session('mem-tx'), 'project', inputs, null, undefined, 0, 1700000000000);
+
+    expect(result.observationIds.length).toBe(3);
+    expect(result.summaryId).toBeNull();
+    expect(result.createdAtEpoch).toBe(1700000000000);
+  });
+
+  it('shares one timestamp across the whole batch', () => {
+    const inputs = [obs({ title: 'A', narrative: 'a' }), obs({ title: 'B', narrative: 'b' })];
+    store.storeObservations(session('mem-ts'), 'project', inputs, null, undefined, 0, 1700000000000);
+
+    const epochs = store.db.prepare('SELECT DISTINCT created_at_epoch FROM observations').all() as Array<{ created_at_epoch: number }>;
+    expect(epochs.length).toBe(1);
+    expect(epochs[0].created_at_epoch).toBe(1700000000000);
+  });
+
+  it('stores observations + summary together with a retrievable summary', () => {
+    const result = store.storeObservations(
+      session('mem-with-summary'),
+      'project',
+      [obs({ title: 'A', narrative: 'a' })],
+      summary({ request: 'do the thing' })
+    );
+
+    expect(result.summaryId).not.toBeNull();
+    expect(store.getSummaryForSession('mem-with-summary')?.request).toBe('do the thing');
+  });
+
+  it('handles an empty observations array', () => {
+    const result = store.storeObservations(session('mem-empty'), 'project', [], null);
+    expect(result.observationIds.length).toBe(0);
+    expect(result.summaryId).toBeNull();
+  });
+
+  it('handles summary-only (no observations)', () => {
+    const result = store.storeObservations(session('mem-summary-only'), 'project', [], summary());
+    expect(result.observationIds.length).toBe(0);
+    expect(result.summaryId).not.toBeNull();
+  });
+
+  it('commits tool-use identity with a summary-only or empty result', () => {
+    const summarySession = session('mem-summary-terminal');
+    const emptySession = session('mem-empty-terminal');
+    const identity = (contentSessionId: string, toolUseId: string) => ({
+      platformSource: 'claude', contentSessionId, toolUseIds: [toolUseId],
+    });
+    store.storeObservations(summarySession, 'project', [], summary(), undefined, 0, undefined, undefined, {
+      committedToolUses: identity('content-mem-summary-terminal', 'toolu_summary'),
+    });
+    store.storeObservations(emptySession, 'project', [], null, undefined, 0, undefined, undefined, {
+      committedToolUses: identity('content-mem-empty-terminal', 'toolu_empty'),
+    });
+    expect(store.hasCommittedToolUse('claude', 'content-mem-summary-terminal', 'toolu_summary')).toBe(true);
+    expect(store.hasCommittedToolUse('claude', 'content-mem-empty-terminal', 'toolu_empty')).toBe(true);
+    expect(store.hasCommittedToolUse('codex', 'content-mem-empty-terminal', 'toolu_empty')).toBe(false);
+  });
+
+  it('rolls back observations when a terminal marker cannot be written', () => {
+    const memorySessionId = session('mem-marker-rollback');
+    store.db.run(`
+      CREATE TRIGGER reject_terminal_marker BEFORE INSERT ON committed_observation_tool_uses
+      BEGIN SELECT RAISE(ABORT, 'marker write failed'); END
+    `);
+    expect(() => store.storeObservations(memorySessionId, 'project', [obs()], null,
+      undefined, 0, undefined, undefined, {
+        committedToolUses: {
+          platformSource: 'claude', contentSessionId: 'content-mem-marker-rollback',
+          toolUseIds: ['toolu_rollback'],
+        },
+      })).toThrow('marker write failed');
+    expect((store.db.prepare('SELECT COUNT(*) AS n FROM observations WHERE memory_session_id = ?')
+      .get(memorySessionId) as { n: number }).n).toBe(0);
+    expect(store.hasCommittedToolUse('claude', 'content-mem-marker-rollback', 'toolu_rollback')).toBe(false);
+  });
+
+  it('recreates the terminal ledger when opening a prior schema', () => {
+    const db = store.db;
+    db.run('DROP TABLE committed_observation_tool_uses');
+    db.run('DELETE FROM schema_versions WHERE version = 73');
+    db.run('PRAGMA user_version = 72');
+    store = new SessionStore(db);
+    store.markCommittedToolUses({
+      platformSource: 'claude', contentSessionId: 'prior-session', toolUseIds: ['toolu_prior'],
+    });
+    expect(store.hasCommittedToolUse('claude', 'prior-session', 'toolu_prior')).toBe(true);
+    expect(db.prepare('SELECT version FROM schema_versions WHERE version = 73').get()).toEqual({ version: 73 });
+  });
+
+  it('applies promptNumber to every observation in the batch', () => {
+    store.storeObservations(
+      session('mem-prompt'),
+      'project',
+      [obs({ title: 'A', narrative: 'a' }), obs({ title: 'B', narrative: 'b' })],
+      null,
+      7
+    );
+
+    const rows = store.db.prepare('SELECT prompt_number FROM observations WHERE memory_session_id = ?').all('mem-prompt') as Array<{ prompt_number: number }>;
+    expect(rows.length).toBe(2);
+    expect(rows.every(r => r.prompt_number === 7)).toBe(true);
+  });
+
+  it('updateDiscoveryTokens back-patches observations and the summary', () => {
+    const result = store.storeObservations(
+      session('mem-backfill'),
+      'project',
+      [obs({ title: 'A', narrative: 'a' }), obs({ title: 'B', narrative: 'b' })],
+      summary(),
+      1,
+      0
+    );
+
+    store.updateDiscoveryTokens(result.observationIds, result.summaryId, 4096);
+
+    const obsRows = store.db.prepare('SELECT discovery_tokens FROM observations WHERE memory_session_id = ?').all('mem-backfill') as Array<{ discovery_tokens: number }>;
+    expect(obsRows.length).toBe(2);
+    expect(obsRows.every(r => r.discovery_tokens === 4096)).toBe(true);
+
+    const summaryRow = store.db.prepare('SELECT discovery_tokens FROM session_summaries WHERE id = ?').get(result.summaryId) as { discovery_tokens: number };
+    expect(summaryRow.discovery_tokens).toBe(4096);
+  });
+
+  it('updateDiscoveryTokens is a no-op with no rows to patch', () => {
+    expect(() => store.updateDiscoveryTokens([], null, 4096)).not.toThrow();
+  });
+
+  it('insertedObservationIds excludes a row deduplicated onto an earlier turn', () => {
+    const mem = session('mem-dedup-insert');
+    const duplicate = obs({ title: 'Same', narrative: 'same' });
+
+    const first = store.storeObservations(mem, 'project', [duplicate], null, 1);
+    expect(first.insertedObservationIds).toEqual(first.observationIds);
+
+    const second = store.storeObservations(mem, 'project', [duplicate], null, 2);
+    // The later turn returns the historical id for sync, but must report it as
+    // NOT newly inserted so a result-usage backfill leaves the original untouched.
+    expect(second.observationIds).toEqual(first.observationIds);
+    expect(second.insertedObservationIds).toEqual([]);
+  });
+
+  it('deduplicates repeated stops for the same turn and merges summary fields (#5225)', () => {
+    const mem = session('mem-dedup-summary-5225');
+    const firstSummary = summary({
+      request: 'Fix authentication bug',
+      investigated: 'Investigated auth middleware and headers',
+      learned: 'Token was expiring prematurely',
+      completed: 'Patched token refresh logic',
+      next_steps: '',
+      notes: null,
+      files_read: ['src/auth.ts'],
+      files_edited: ['src/auth.ts'],
+    });
+
+    const first = store.storeObservations(mem, 'project', [], firstSummary, 1, 100);
+    expect(first.summaryId).not.toBeNull();
+    expect(first.summaryUpdated).toBe(false);
+
+    const firstId = first.summaryId;
+
+    // A background task notification wakes up the agent; it stops again on prompt 1
+    // with a second summary where completed/learned are empty but next_steps is added
+    const secondSummary = summary({
+      request: 'Fix authentication bug',
+      investigated: '',
+      learned: '',
+      completed: '',
+      next_steps: 'Add integration tests for token refresh',
+      notes: 'Verified locally',
+      files_read: ['tests/auth.test.ts'],
+      files_edited: [],
+    });
+
+    const second = store.storeObservations(mem, 'project', [], secondSummary, 1, 50);
+    expect(second.summaryId).toBe(firstId);
+    expect(second.summaryUpdated).toBe(true);
+
+    // Verify only ONE summary row exists in database for this turn
+    const rows = store.db.prepare(
+      'SELECT * FROM session_summaries WHERE memory_session_id = ? AND prompt_number = ?'
+    ).all('mem-dedup-summary-5225', 1) as any[];
+    expect(rows.length).toBe(1);
+
+    const row = rows[0];
+    expect(row.id).toBe(firstId);
+    expect(row.request).toBe('Fix authentication bug');
+    // Content did not shrink: previous values preserved for empty fields
+    expect(row.investigated).toBe('Investigated auth middleware and headers');
+    expect(row.learned).toBe('Token was expiring prematurely');
+    expect(row.completed).toBe('Patched token refresh logic');
+    // New fields were applied
+    expect(row.next_steps).toBe('Add integration tests for token refresh');
+    expect(row.notes).toBe('Verified locally');
+    // Files were merged
+    expect(JSON.parse(row.files_read)).toEqual(['src/auth.ts', 'tests/auth.test.ts']);
+    expect(JSON.parse(row.files_edited)).toEqual(['src/auth.ts']);
+    // Tokens kept maximum
+    expect(row.discovery_tokens).toBe(100);
+
+    // Prompt 2 creates a separate summary as expected
+    const third = store.storeObservations(mem, 'project', [], summary({ request: 'New request' }), 2);
+    expect(third.summaryId).not.toBe(firstId);
+    const allSummaries = store.db.prepare(
+      'SELECT id, prompt_number FROM session_summaries WHERE memory_session_id = ? ORDER BY id ASC'
+    ).all('mem-dedup-summary-5225') as any[];
+    expect(allSummaries.length).toBe(2);
+    expect(allSummaries.map(s => s.prompt_number)).toEqual([1, 2]);
+  });
+
+  it('does not overwrite remote-owned replica summaries when storing local turn (#5228)', () => {
+    const mem = session('mem-remote-check');
+    // Simulate a replica summary synced from a remote device
+    store.db.prepare(`
+      INSERT INTO session_summaries
+        (memory_session_id, project, request, prompt_number, origin_device_id, origin_local_id, created_at, created_at_epoch)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run('mem-remote-check', 'project', 'Remote summary from device B', 1, 'device-B', 'remote-id-1', '2026-01-01T00:00:00Z', 1000);
+
+    const remoteRow = store.db.prepare('SELECT * FROM session_summaries WHERE origin_device_id = ?').get('device-B') as any;
+    expect(remoteRow).toBeDefined();
+
+    // Local turn executes on the same session and prompt number
+    const localResult = store.storeObservations(mem, 'project', [], summary({ request: 'Local summary from this machine' }), 1);
+
+    // It must NOT update the remote replica row in place; it must insert a native row
+    expect(localResult.summaryUpdated).toBe(false);
+    expect(localResult.summaryId).not.toBe(remoteRow.id);
+
+    // Verify remote replica row is completely preserved
+    const preservedRemote = store.db.prepare('SELECT * FROM session_summaries WHERE id = ?').get(remoteRow.id) as any;
+    expect(preservedRemote.request).toBe('Remote summary from device B');
+    expect(preservedRemote.origin_device_id).toBe('device-B');
+
+    // Verify new native row exists
+    const nativeRow = store.db.prepare('SELECT * FROM session_summaries WHERE id = ?').get(localResult.summaryId) as any;
+    expect(nativeRow.request).toBe('Local summary from this machine');
+    expect(nativeRow.origin_device_id).toBeNull();
+  });
+
+  it('updateDiscoveryTokens preserves the maximum and does not shrink token counts (#5228)', () => {
+    const mem = session('mem-token-shrink-check');
+    const res = store.storeObservations(mem, 'project', [], summary({ request: 'Token test' }), 1, 500);
+    expect(res.summaryId).not.toBeNull();
+
+    // Verify initial tokens
+    let row = store.db.prepare('SELECT discovery_tokens FROM session_summaries WHERE id = ?').get(res.summaryId) as any;
+    expect(row.discovery_tokens).toBe(500);
+
+    // Backfill with a smaller token count (e.g. 150) must not shrink the saved count
+    store.updateDiscoveryTokens([], res.summaryId, 150);
+    row = store.db.prepare('SELECT discovery_tokens FROM session_summaries WHERE id = ?').get(res.summaryId) as any;
+    expect(row.discovery_tokens).toBe(500);
+
+    // Backfill with a larger token count (e.g. 1200) should increase it
+    store.updateDiscoveryTokens([], res.summaryId, 1200);
+    row = store.db.prepare('SELECT discovery_tokens FROM session_summaries WHERE id = ?').get(res.summaryId) as any;
+    expect(row.discovery_tokens).toBe(1200);
+  });
+
+  it('takes next_steps from the latest stop of the turn, even when empty (#5225)', () => {
+    const mem = session('mem-next-steps-latest');
+    // Stop 1 happens while a background task is still running
+    store.storeObservations(mem, 'project', [], summary({
+      completed: 'Started the build in the background',
+      next_steps: 'Wait for the background build, then check the log',
+    }), 1);
+
+    // Stop 2 after the <task-notification>: the build is done, nothing is left
+    const second = store.storeObservations(mem, 'project', [], summary({
+      completed: 'Build passed; read the log',
+      next_steps: '',
+    }), 1);
+    expect(second.summaryUpdated).toBe(true);
+
+    const row = store.db.prepare(
+      'SELECT completed, next_steps FROM session_summaries WHERE id = ?'
+    ).get(second.summaryId) as any;
+    expect(row.completed).toBe('Build passed; read the log');
+    expect(row.next_steps).toBe('');
+  });
+
+  it('updates the newest row when the turn already holds duplicates from before the fix (#5225)', () => {
+    const mem = session('mem-existing-duplicates');
+    const first = store.storeObservations(mem, 'project', [], summary({ completed: 'oldest' }), 1);
+    store.db.prepare(
+      `INSERT INTO session_summaries (memory_session_id, project, request, completed, prompt_number, created_at, created_at_epoch)
+       VALUES (?, 'project', 'request', 'newest', 1, '2026-01-01T00:00:00.000Z', 1767225600000)`
+    ).run(mem);
+    const newest = store.db.prepare('SELECT MAX(id) AS id FROM session_summaries').get() as { id: number };
+    expect(newest.id).not.toBe(first.summaryId);
+
+    const repeat = store.storeObservations(mem, 'project', [], summary({ completed: 'merged' }), 1);
+
+    expect(repeat.summaryId).toBe(newest.id);
+    const oldest = store.db.prepare('SELECT completed FROM session_summaries WHERE id = ?').get(first.summaryId) as any;
+    expect(oldest.completed).toBe('oldest');
+  });
+
+  it('keeps a stored file list that is not JSON instead of dropping it on a repeated stop (#5225)', () => {
+    const mem = session('mem-bad-file-list');
+    const first = store.storeObservations(mem, 'project', [], summary({ files_read: ['a.ts'] }), 1);
+    store.db.prepare('UPDATE session_summaries SET files_read = ? WHERE id = ?').run('legacy/path.ts', first.summaryId);
+
+    store.storeObservations(mem, 'project', [], summary({ files_read: ['b.ts'] }), 1);
+
+    const row = store.db.prepare('SELECT files_read FROM session_summaries WHERE id = ?').get(first.summaryId) as any;
+    expect(JSON.parse(row.files_read)).toEqual(['legacy/path.ts', 'b.ts']);
+  });
+});

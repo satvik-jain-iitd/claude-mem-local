@@ -1,0 +1,20 @@
+{
+  "name": "cmem-pro",
+  "displayName": "CMEM Pro",
+  "version": "0.2.0",
+  "description": "CMEM Pro for the Claude app: captures tool use via hooks, streams fragments to cmem.ai (Pro runs the observer), and injects observations back into new sessions and spawned agents.",
+  "author": {
+    "name": "CMEM, Inc."
+  },
+  "homepage": "https://cmem.ai",
+  "repository": "https://github.com/thedotmack/claude-mem",
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "keywords": [
+    "memory",
+    "claude-mem",
+    "cmem",
+    "observations",
+    "claude-app",
+    "cowork"
+  ]
+}

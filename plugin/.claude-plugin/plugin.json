@@ -1,0 +1,24 @@
+{
+  "name": "claude-mem",
+  "version": "15.15.0",
+  "description": "Persistent memory for AI coding agents: the next session starts where the last one left off. Works with Claude Code, Codex, Cursor, OpenCode and more.",
+  "author": {
+    "name": "Alex Newman"
+  },
+  "repository": "https://github.com/thedotmack/claude-mem",
+  "license": "Apache-2.0",
+  "keywords": [
+    "claude",
+    "claude-code",
+    "claude-agent-sdk",
+    "mcp",
+    "plugin",
+    "memory",
+    "compression",
+    "knowledge-graph",
+    "transcript",
+    "typescript",
+    "nodejs"
+  ],
+  "homepage": "https://github.com/thedotmack/claude-mem#readme"
+}

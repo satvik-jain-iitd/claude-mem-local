@@ -1,0 +1,4 @@
+[submodule "knowledge/shipquick_latest"]
+	path = knowledge/shipquick_latest
+	url = https://github.com/satvik-jain-iitd/shipquick_latest
+	branch = dev

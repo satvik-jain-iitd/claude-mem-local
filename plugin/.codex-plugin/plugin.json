@@ -1,0 +1,46 @@
+{
+  "name": "claude-mem",
+  "version": "15.15.0",
+  "description": "Persistent memory for AI coding agents: the next session starts where the last one left off. Works with Claude Code, Codex, Cursor, OpenCode and more.",
+  "author": {
+    "name": "Alex Newman",
+    "url": "https://github.com/thedotmack"
+  },
+  "homepage": "https://github.com/thedotmack/claude-mem#readme",
+  "repository": "https://github.com/thedotmack/claude-mem",
+  "license": "Apache-2.0",
+  "keywords": [
+    "claude",
+    "claude-code",
+    "claude-agent-sdk",
+    "mcp",
+    "plugin",
+    "memory",
+    "compression",
+    "knowledge-graph",
+    "transcript",
+    "typescript",
+    "nodejs"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "hooks": "./hooks/codex-hooks.json",
+  "interface": {
+    "displayName": "claude-mem",
+    "shortDescription": "Persistent memory: the next session starts where the last one left off.",
+    "longDescription": "While you work, an observer watches what Codex reads, edits and runs, and writes short notes called observations. The next session starts with a compact index of the ones that matter, so you stop re-explaining the codebase and re-discovering decisions.",
+    "developerName": "Alex Newman",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/thedotmack/claude-mem",
+    "defaultPrompt": [
+      "Find what I already learned about this codebase before I start a new task.",
+      "Show recent observations related to the files I am editing right now.",
+      "Summarize the last session and inject the most relevant context into this one."
+    ],
+    "brandColor": "#1F6FEB"
+  }
+}

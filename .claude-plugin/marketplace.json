@@ -1,0 +1,27 @@
+{
+  "name": "thedotmack",
+  "owner": {
+    "name": "Alex Newman"
+  },
+  "metadata": {
+    "description": "Plugins by Alex Newman (thedotmack)"
+  },
+  "plugins": [
+    {
+      "name": "claude-mem",
+      "version": "15.15.0",
+      "source": "./plugin",
+      "description": "Persistent memory for Claude Code: the next session starts where the last one left off."
+    },
+    {
+      "name": "cmem-pro",
+      "displayName": "CMEM Pro",
+      "version": "0.2.0",
+      "source": "./cowork",
+      "description": "CMEM Pro for the Claude app - hooks stream tool use to cmem.ai and inject observations into new sessions and agents"
+    }
+  ],
+  "renames": {
+    "claude-mem-cowork": "cmem-pro"
+  }
+}
