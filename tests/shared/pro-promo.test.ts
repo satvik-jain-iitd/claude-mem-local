@@ -19,15 +19,13 @@ describe('pro trial promo copy', () => {
   it('tags links with the source only — no trial length hint', () => {
     expect(proTrialUrl('installer')).toBe('https://cmem.ai/pro?from=installer');
     expect(proTrialUrl('session-start')).not.toContain('trial=');
-    expect(proTrialLine('welcome-hint')).toContain('https://cmem.ai/pro?from=welcome-hint');
+    // M2c issue #2: the promo line is off, so no link is offered at all.
+    expect(proTrialLine('welcome-hint')).toBe('');
   });
 
-  it('offers trials only to installs with no plan (#5540)', () => {
-    for (const plan of ['trial', 'pro', 'teambrain_seat', ' trial ']) {
+  it('offers no trial to any install (#5540, off under M2c issue #2)', () => {
+    for (const plan of ['trial', 'pro', 'teambrain_seat', ' trial ', '', 'none']) {
       expect(proTrialLine('context-banner', plan)).toBe('');
-    }
-    for (const plan of ['', 'none']) {
-      expect(proTrialLine('context-banner', plan)).toContain(PRO_TRIAL_PITCH);
     }
   });
 

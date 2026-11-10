@@ -37,12 +37,13 @@ export interface SyncAuthFailure {
 }
 
 export const SYNC_AUTH_MESSAGES: Record<SyncAuthCode, string> = {
+  // M2c issue #2: no cmem.ai upsell or link here; the pause text stays.
   invalid_token:
     'Cloud sync is paused: this device\'s sync token is no longer valid (connecting another machine can rotate it). '
-    + 'Reconnect at https://cmem.ai (Connect), then restart claude-mem. Your local memories are safe.',
+    + 'Reconnect, then restart claude-mem. Your local memories are safe.',
   subscription_inactive:
-    'Cloud sync is paused: your CMEM Pro trial or subscription is not active. '
-    + 'Renew at https://cmem.ai/pro and sync resumes on its own within the hour. Your local memories are safe.',
+    'Cloud sync is paused: the sync account is not active. '
+    + 'Sync resumes on its own once the account accepts it again. Your local memories are safe.',
 };
 
 /**
@@ -167,6 +168,7 @@ export function shouldWarnSyncHealth(state: SyncHealthState | null, nowMs: numbe
 
 /** One short block: cause, what is safe, what to do. '' when healthy. */
 export function renderSyncHealthWarning(state: SyncHealthState | null, nowMs: number = Date.now()): string {
+  // M2c issue #2: no cmem.ai upsell in the warning. Failing-sync notes stay.
   if (!shouldWarnSyncHealth(state, nowMs)) return '';
   if (state.state === 'auth_paused') {
     const known = state.code === 'subscription_inactive' || state.code === 'invalid_token'

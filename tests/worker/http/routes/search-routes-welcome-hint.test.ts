@@ -468,7 +468,7 @@ describe('SearchRoutes Welcome Hint', () => {
 
         const body = (res.send as any).mock.calls[0][0] as string;
         expect(body).toContain('# claude-mem status');
-        expect(body.includes('https://cmem.ai/pro?from=welcome-hint')).toBe(plan === 'none');
+        expect(body.includes('https://cmem.ai/pro?from=welcome-hint')).toBe(false);
       }
     } finally {
       if (previousPlan === undefined) delete process.env.CLAUDE_MEM_PRO_PLAN;

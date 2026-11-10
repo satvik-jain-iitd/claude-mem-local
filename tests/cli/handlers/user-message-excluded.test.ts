@@ -102,7 +102,7 @@ describe('userMessageHandler excluded-project gate', () => {
       });
 
       expect(result.systemMessage).toContain('Watch live in browser http://localhost:37777/');
-      expect(result.systemMessage!.includes('cmem.ai/pro?from=context-banner')).toBe(plan === '' || plan === 'none');
+      expect(result.systemMessage!.includes('cmem.ai/pro?from=context-banner')).toBe(false);
     }
     installProPlan = '';
   });

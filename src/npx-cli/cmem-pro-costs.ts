@@ -2,6 +2,7 @@
  * OAuth, provider-choice, and CMEM Pro copy shared by the installer and its
  * contract tests. Keep this file static: the provider screen must render even
  * before the worker is running and must not depend on a pricing API.
+ * M2c issue #2: these CMEM Pro endpoint constants remain for installer callers outside this slice.
  */
 
 import { cmemProOrigin } from '../shared/cmem-gateway.js';

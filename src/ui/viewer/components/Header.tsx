@@ -4,7 +4,7 @@ import { ThemeToggle } from './ThemeToggle';
 import { ThemePreference } from '../hooks/useTheme';
 import { GitHubStarsButton } from './GitHubStarsButton';
 import { useSpinningFavicon } from '../hooks/useSpinningFavicon';
-import { PRO_TRIAL_PITCH, PRO_TRIAL_SHORT, PRO_TRIAL_URL, TEAMBRAIN_PITCH, TEAMBRAIN_START_URL } from '../constants/promo';
+import { PRO_PROMO_VISIBLE, PRO_TRIAL_PITCH, PRO_TRIAL_SHORT, PRO_TRIAL_URL, TEAMBRAIN_PITCH, TEAMBRAIN_START_URL } from '../constants/promo';
 import type { SyncPresentation } from '../utils/sync-presentation';
 
 interface HeaderProps {
@@ -58,7 +58,8 @@ export function Header({
         {/* Most people running the free plugin never learn the trial exists.
             It sits beside the logo (not in .status) so it survives the
             responsive rules that hide the icon links on tablet and mobile. */}
-        <a
+        {/* M2c issue #2: hidden while PRO_PROMO_VISIBLE is false. */}
+        {PRO_PROMO_VISIBLE && <a
           className="pro-trial-cta"
           href={PRO_TRIAL_URL}
           target="_blank"
@@ -71,7 +72,7 @@ export function Header({
           </svg>
           <span className="pro-trial-cta-full">{t(PRO_TRIAL_PITCH)}</span>
           <span className="pro-trial-cta-short">{t(PRO_TRIAL_SHORT)}</span>
-        </a>
+        </a>}
         {showTeamBrainLink && (
           <a
             className="teambrain-cta"

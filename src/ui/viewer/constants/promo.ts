@@ -15,6 +15,8 @@ export const PRO_TRIAL_MAX_DAYS = 30;
 export const PRO_TRIAL_LABEL = `${PRO_TRIAL_MAX_DAYS} Day Free Trial`;
 
 /** Trial landing URL, tagged so cmem.ai can attribute viewer-sourced signups. */
+// M2c issue #2: the viewer's pro promo is off (Header.tsx hides the CTA when this is false).
+export const PRO_PROMO_VISIBLE = false;
 export const PRO_TRIAL_URL = 'https://cmem.ai/pro?from=viewer';
 
 /**

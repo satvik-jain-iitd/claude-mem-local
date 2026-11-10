@@ -11,6 +11,7 @@
  * gateway response clears it (the allowance changed). Restarts read the same
  * file, so they do not probe again.
  */
+// M2c issue #2: the gateway is off (CMEM_GATEWAY_ENABLED), so no probe is ever written.
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { resolveDataDir } from './paths.js';

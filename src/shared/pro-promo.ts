@@ -62,7 +62,11 @@ export const PRO_TRIAL_PITCH = `${PRO_TRIAL_LABEL} — memory runs off-plan. Get
  * plan (trial, pro or a TeamBrain seat) and kept for installs with no plan
  * (empty or `none`), as decided on #5540.
  */
+// M2c issue #2: the pro promo is off. Callers already drop an empty line.
+export const PRO_PROMO_ENABLED = false;
+
 export function proTrialLine(source: ProPromoSource, plan = ''): string {
+  if (!PRO_PROMO_ENABLED) return '';
   const trimmedPlan = plan.trim();
   if (trimmedPlan === 'trial' || trimmedPlan === 'pro' || trimmedPlan === 'teambrain_seat') return '';
   return `${String.fromCodePoint(0x2728)} ${PRO_TRIAL_PITCH} ${proTrialUrl(source)}`;

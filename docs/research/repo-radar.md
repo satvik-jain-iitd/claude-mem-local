@@ -22,3 +22,10 @@ Reference: `thedotmack/claude-mem` (Apache-2.0). Source copied at M0 (commit to 
 - Need: score a local model's observation against Claude's observation (field coverage, exact numbers, valid XML), no model call.
 - Query: `gh search repos "claude code memory" --limit 5` (and `"claude-mem eval"`, `"llm observation summary eval harness"`, both returned no results).
 - Verdict: no repo found that scores observer outputs. Built a small deterministic scorer from scratch in `evals/observer/score.ts`, stdlib only.
+## Run M2c-A: 2026-11-10 (issue #2, cml-dev)
+
+Need (one line): stop runtime use of the cmem.ai gateway, pro promo and sync-health upsell in the local fork.
+
+Query: `gh search repos "claude-mem cmem gateway" --limit 5` (returned no repos).
+
+Verdict: no third-party repo for this need. The change is a removal inside the fork, so it is built in place (flags off, no new code), not adopted from outside.

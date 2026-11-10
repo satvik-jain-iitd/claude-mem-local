@@ -62,7 +62,7 @@ describe('sync-health helpers', () => {
     expect(classifySyncAuthFailure(403, 'not json')?.code).toBe('invalid_token');
     expect(classifySyncAuthFailure(403, '<!DOCTYPE html>\n<!--[if lt IE 7]> <html class="no-js ie6 oldie" lang="en-US"> <![endif]--><title>Attention Required! | Cloudflare</title>')).toBeNull();
     expect(classifySyncAuthFailure(401, '<html><body>blocked</body></html>')).toBeNull();
-    expect(classifySyncAuthFailure(403, '{"code":"subscription_inactive"}')?.message).toContain('cmem.ai/pro');
+    expect(classifySyncAuthFailure(403, '{"code":"subscription_inactive"}')?.message).not.toContain('cmem.ai');
   });
 
   it('replaces HTML error pages with a short description and scrubs tokens', () => {
@@ -82,7 +82,7 @@ describe('sync-health helpers', () => {
     const sustained = { ...base, failingSinceAt: now - SYNC_FAILING_WARN_AFTER_MS };
     expect(renderSyncHealthWarning(sustained, now)).toContain('Cloud sync has been failing for 15 minutes');
     const paused: SyncHealthState = { ...base, state: 'auth_paused', code: 'subscription_inactive', consecutiveFailures: 0 };
-    expect(renderSyncHealthWarning(paused, now)).toContain('trial or subscription is not active');
+    expect(renderSyncHealthWarning(paused, now)).toContain('the sync account is not active');
     expect(renderSyncHealthWarning({ ...base, state: 'ok' }, now)).toBe('');
     expect(renderSyncHealthWarning(null, now)).toBe('');
   });
@@ -176,7 +176,7 @@ describe('CloudSync failure handling', () => {
     const pausedStatus = sync.status();
     expect(pausedStatus.authError?.code).toBe('subscription_inactive');
     expect(pausedStatus.health.state).toBe('auth_paused');
-    expect(pausedStatus.lastError).toContain('cmem.ai/pro');
+    expect(pausedStatus.lastError).not.toContain('cmem.ai');
     expect(readSyncHealth(healthPath)?.state).toBe('auth_paused');
     expect(readSyncHealth(healthPath)?.code).toBe('subscription_inactive');
 
@@ -203,7 +203,7 @@ describe('CloudSync failure handling', () => {
     seedObservation('one');
     await sync.flush();
     expect(sync.status().authError?.code).toBe('invalid_token');
-    expect(sync.status().authError?.message).toContain('Reconnect at https://cmem.ai');
+    expect(sync.status().authError?.message).toContain('Reconnect, then restart');
     sync.stop();
   });
 

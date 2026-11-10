@@ -32,6 +32,13 @@ import { proTrialUrl } from './pro-promo.js';
 import { relayedLine, relayedLink } from './relayed-text.js';
 
 /**
+ * M2c (issue #2): the cmem.ai gateway is no longer used at runtime. Every
+ * gate below reads this flag, so no request, key or fallback reaches cmem.ai.
+ * Set true only to restore the old gateway behaviour.
+ */
+export const CMEM_GATEWAY_ENABLED = false;
+
+/**
  * Origin for the cmem.ai funnel and gateway. Overridable so the whole flow can
  * be walked against a dev server (CMEM_PRO_ORIGIN=http://localhost:3005).
  * Read per-call, not at module load, so tests and the installer's env override
@@ -88,6 +95,7 @@ export function cmemGatewayRole(settings: {
   CLAUDE_MEM_OPENROUTER_BASE_URL?: string;
   CLAUDE_MEM_QUOTA_FALLBACK_PROVIDER?: string;
 }): CmemGatewayRole | null {
+  if (!CMEM_GATEWAY_ENABLED) return null; // M2c issue #2
   if (!isCmemGatewayUrl(settings.CLAUDE_MEM_OPENROUTER_BASE_URL)) return null;
   if (settings.CLAUDE_MEM_PROVIDER === 'openrouter') return 'primary';
   return String(settings.CLAUDE_MEM_QUOTA_FALLBACK_PROVIDER ?? '').trim() === 'openrouter' ? 'quota-fallback' : null;
@@ -118,6 +126,7 @@ export function setSessionProviderResolver(resolver: SessionProviderResolver | n
  * spend plan tokens.
  */
 export function canCmemGatewayServe(platformSource?: string): boolean {
+  if (!CMEM_GATEWAY_ENABLED) return false; // M2c issue #2
   const settings = SettingsDefaultsManager.loadFromFile(USER_SETTINGS_PATH);
   const routedProvider = sessionProviderResolver?.(platformSource) ?? null;
   return cmemGatewayRole(routedProvider === null ? settings : { ...settings, CLAUDE_MEM_PROVIDER: routedProvider }) !== null;
@@ -142,6 +151,8 @@ export function isCmemMemoryKey(apiKey: string | undefined | null): boolean {
  * leave for the wrong host.
  */
 export function isKeyAllowedForEndpoint(apiUrl: string, apiKey: string): boolean {
+  // M2c issue #2: with the gateway off, no key may go to cmem.ai at all.
+  if (!CMEM_GATEWAY_ENABLED && isCmemGatewayUrl(apiUrl)) return false;
   return isCmemGatewayUrl(apiUrl) === isCmemMemoryKey(apiKey);
 }
 
@@ -156,6 +167,8 @@ export function isKeyAllowedForEndpoint(apiUrl: string, apiKey: string): boolean
  *    pasted into any provider's settings never leaves for a third party.
  */
 export function keysForEndpoint(apiUrl: string, keys: readonly string[]): string[] {
+  // M2c issue #2: the gateway is off, so cmem.ai gets no key (not even a personal one).
+  if (isCmemGatewayUrl(apiUrl) && !CMEM_GATEWAY_ENABLED) return [];
   if (isCmemGatewayUrl(apiUrl)) {
     const accountKey = keys.find(key => isCmemMemoryKey(key));
     return accountKey ? [accountKey] : [];
