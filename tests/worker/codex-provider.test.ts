@@ -323,7 +323,8 @@ describe('Codex provider integration', () => {
 
   it('accepts Codex settings without changing the default provider or pinning a model', () => {
     const defaults = SettingsDefaultsManager.getAllDefaults();
-    expect(defaults.CLAUDE_MEM_PROVIDER).toBe('claude');
+    // M2 (#2): the default provider is now the local openai-compatible one, not claude.
+    expect(defaults.CLAUDE_MEM_PROVIDER).toBe('openai-compatible');
     expect(defaults.CLAUDE_MEM_CODEX_MODEL).toBe('');
     expect(defaults.CLAUDE_MEM_CODEX_REASONING_EFFORT).toBe('low');
     const routes = Object.create(SettingsRoutes.prototype) as any;

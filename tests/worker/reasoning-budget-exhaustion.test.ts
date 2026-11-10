@@ -716,7 +716,8 @@ describe('observer auth method', () => {
       ...defaults,
       CLAUDE_MEM_OPENAI_COMPAT_PRESET: 'nvidia-nim',
     })).toBe('NVIDIA NIM (build.nvidia.com) API key');
-    expect(describeObserverAuthMethod('openai-compatible', defaults)).toBe('OpenAI-compatible API key');
+    // M2 (#2): the default preset is ollama, which needs no key.
+    expect(describeObserverAuthMethod('openai-compatible', defaults)).toBe('Ollama (local), no key needed');
   });
 });
 
