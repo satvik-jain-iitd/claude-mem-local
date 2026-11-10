@@ -1,0 +1,3 @@
+# The screens this project renders and compares on every PR (story #146, docs/SCREENS.md).
+# One screen per line: name | path | viewport (WxH) | setup step. # comments and blanks ignored.
+# Empty for now: fill it in once you have a Playwright spec (start from docs/templates/screens.spec.ts).

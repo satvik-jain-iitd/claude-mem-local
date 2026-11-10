@@ -1,0 +1,30 @@
+# The live roadmap page of this project (added by ShipQuick scripts/adopt.sh): a call to the reusable workflow, pinned to one commit.
+# No pull_request trigger on purpose: on a PR the job would run that PR's own unreviewed script with write rights.
+# To move to a newer ShipQuick release, run adopt.sh again with --ref <tag>: it changes `uses:` and `shipquick_ref` together.
+# workflow_run matches your CI workflow by its `name:` (adopt.sh read it from .github/workflows/ci.yml).
+name: Roadmap page
+
+on:
+  issues:
+    types: [opened, edited, closed, reopened, labeled, unlabeled]
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  roadmap:
+    permissions:
+      contents: write
+      issues: read
+      pull-requests: read
+      checks: read
+      statuses: read
+    uses: satvik-jain-iitd/shipquick_latest/.github/workflows/roadmap.yml@973469dfb033abe589de6f06507d36ce76841aa7 # v0.10.0
+    with:
+      shipquick_ref: 973469dfb033abe589de6f06507d36ce76841aa7
