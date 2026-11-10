@@ -9,7 +9,9 @@ Date: 2026-11-10. Issue #1. Method: read-only copy of `~/.claude-mem` (scratchpa
 | `claude-mem.db` | 330,186,752 bytes (about 321 MB) |
 | `claude-mem.db-wal` | 4,194,304 bytes (4 MB) |
 | `claude-mem.db-shm` | 32 KB |
-| `chroma/` in the copy | 366 MB. Note: the first `du` scan of the original said 1.1 G. Not yet explained. |
+| `chroma/` in the copy | 366 MB. **Wrong, see correction below.** The copy has no `chroma.sqlite3` (777 MB in the live folder). The copy is not a full size measure of chroma. |
+
+**Correction (PR #18, issue #10):** the 1.1 G vs 366 MB gap is the missing `chroma.sqlite3` in the copy. The HNSW files match. Use the live folder for chroma size, not the copy.
 
 ## Row counts (claude-mem.db)
 
